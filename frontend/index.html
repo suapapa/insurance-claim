@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>보험 청구 서류 정리</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>📋 보험 청구 서류 정리</h1>
+  <button id="addBtn" class="primary">+ 서류 추가</button>
+  <input type="file" id="fileInput" accept="image/*" multiple hidden>
+</header>
+
+<div id="dropzone" class="dropzone">
+  <div class="dz-inner">
+    <div class="dz-icon">🖼️</div>
+    <p><strong>사진을 끌어다 놓거나</strong> 상단의 <b>서류 추가</b> 버튼을 누르세요</p>
+    <p class="hint">진단서 · 소견서 · 처방전 · 영수증 등 (JPG/PNG/HEIC/WebP)</p>
+  </div>
+</div>
+
+<main>
+  <h2>청구 작업</h2>
+  <div id="jobs" class="jobs"></div>
+  <p id="empty" class="hint" hidden>아직 작업이 없습니다. 서류를 추가해 보세요.</p>
+</main>
+
+<template id="job-tpl">
+  <article class="job card">
+    <div class="job-head">
+      <div class="job-title">
+        <span class="status-badge"></span>
+        <span class="job-name"></span>
+      </div>
+      <span class="job-time hint"></span>
+    </div>
+    <div class="job-progress">
+      <div class="spinner"></div>
+      <span class="progress-text"></span>
+    </div>
+    <p class="job-error"></p>
+    <div class="claims"></div>
+  </article>
+</template>
+
+<template id="claim-tpl">
+  <div class="claim claim-질병">
+    <div class="claim-badges">
+      <span class="badge type"></span>
+      <span class="badge hosp"></span>
+    </div>
+    <div class="claim-body">
+      <span class="claim-patient"></span>
+      <span class="claim-date"></span>
+    </div>
+    <div class="claim-diagnosis"></div>
+    <code class="claim-dir hint"></code>
+  </div>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>

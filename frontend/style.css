@@ -1,0 +1,89 @@
+:root {
+  --bg: #0f1117;
+  --card: #181c25;
+  --card2: #1f2430;
+  --line: #2a3040;
+  --text: #e6e9ef;
+  --muted: #8a93a6;
+  --accent: #4f8cff;
+  --green: #34c98e;
+  --red: #ff5d6c;
+  --amber: #f5a623;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: "Pretendard", "Noto Sans KR", -apple-system, sans-serif;
+}
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 24px; border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; background: var(--bg); z-index: 5;
+}
+h1 { font-size: 18px; margin: 0; }
+h2 { font-size: 15px; color: var(--muted); margin: 24px 0 12px; text-transform: uppercase; letter-spacing: .05em; }
+main { padding: 0 24px 48px; max-width: 1100px; margin: 0 auto; }
+
+button.primary {
+  background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+  padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+button.primary:hover { filter: brightness(1.1); }
+
+.dropzone {
+  margin: 24px auto 0; max-width: 1100px; padding: 0 24px;
+}
+.dz-inner {
+  border: 2px dashed var(--line); border-radius: 14px; padding: 40px;
+  text-align: center; color: var(--muted); transition: all .15s;
+}
+.dropzone.drag .dz-inner { border-color: var(--accent); background: rgba(79,140,255,.08); color: var(--text); }
+.dz-icon { font-size: 34px; margin-bottom: 8px; }
+.dz-inner p { margin: 4px 0; }
+.hint { color: var(--muted); font-size: 12.5px; }
+
+.jobs { display: grid; gap: 16px; }
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px;
+}
+.job-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.job-title { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.job-name { font-family: ui-monospace, monospace; font-size: 13.5px; }
+.job-time { font-size: 12px; }
+
+.status-badge {
+  width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none;
+}
+.status-badge.classifying, .status-badge.extracting, .status-badge.queued { background: var(--amber); }
+.status-badge.done { background: var(--green); }
+.status-badge.failed { background: var(--red); }
+
+.job-progress { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--muted); font-size: 13.5px; }
+.job-progress.hidden { display: none; }
+.spinner {
+  width: 16px; height: 16px; border: 2.5px solid var(--line); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin .8s linear infinite; flex: none;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.job-progress.done .spinner { border-top-color: var(--green); animation: none; }
+.job-error { color: var(--red); font-size: 13px; margin: 10px 0 0; }
+.job-error:empty { display: none; }
+
+.claims { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-top: 14px; }
+.claim {
+  background: var(--card2); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+  border-radius: 10px; padding: 12px;
+}
+.claim-상해 { border-left-color: var(--amber); }
+.claim-질병 { border-left-color: var(--green); }
+.claim-badges { display: flex; gap: 6px; margin-bottom: 8px; }
+.badge {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: rgba(79,140,255,.15); color: #9dbaff; font-weight: 600;
+}
+.badge.hosp { background: rgba(245,166,35,.15); color: var(--amber); }
+.claim-body { display: flex; justify-content: space-between; gap: 8px; }
+.claim-patient { font-weight: 700; font-size: 15px; }
+.claim-date { color: var(--muted); font-size: 12.5px; align-self: center; }
+.claim-diagnosis { margin-top: 6px; font-size: 13px; color: #c8cfdd; min-height: 17px; }
+.claim-dir { display: block; margin-top: 8px; font-size: 11px; word-break: break-all; }
