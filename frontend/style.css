@@ -1057,7 +1057,7 @@ button:disabled,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .claims-title {
@@ -1075,18 +1075,42 @@ button:disabled,
 .claims {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
+  gap: 14px;
 }
 
 /* ==========================================================================
-   Claim Item Card
+   Claim Item Card — distinct surface per classified claim
    ========================================================================== */
 .claim {
   min-width: 0;
-  padding: 4px 0;
+  padding: 14px 14px 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--card-elevated);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--duration) ease, box-shadow var(--duration) ease, background-color var(--duration) ease;
+}
+
+.claim:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+}
+
+.claim-질병 {
+  background:
+    linear-gradient(180deg, var(--green-tint) 0%, transparent 42%),
+    var(--card-elevated);
+  border-color: var(--green-border);
+}
+
+.claim-상해 {
+  background:
+    linear-gradient(180deg, var(--amber-tint) 0%, transparent 42%),
+    var(--card-elevated);
+  border-color: var(--amber-border);
 }
 
 .claim-top {
@@ -1099,6 +1123,7 @@ button:disabled,
 .claim-badges {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
@@ -1154,23 +1179,53 @@ button:disabled,
 .claim-body {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .claim-body .claim-badges {
-  margin-bottom: 3px;
+  margin-bottom: 0;
 }
 
 .claim-patient-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 
+.claim-index {
+  flex-shrink: 0;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: var(--r-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: var(--card-subtle);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.claim-질병 .claim-index {
+  background: var(--green-tint);
+  border-color: var(--green-border);
+  color: var(--green);
+}
+
+.claim-상해 .claim-index {
+  background: var(--amber-tint);
+  border-color: var(--amber-border);
+  color: var(--amber);
+}
+
 .patient-avatar {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: var(--accent-tint);
   display: inline-flex;
@@ -1178,6 +1233,19 @@ button:disabled,
   justify-content: center;
   color: var(--accent);
   border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.claim-질병 .patient-avatar {
+  background: var(--green-tint);
+  border-color: var(--green-border);
+  color: var(--green);
+}
+
+.claim-상해 .patient-avatar {
+  background: var(--amber-tint);
+  border-color: var(--amber-border);
+  color: var(--amber);
 }
 
 .claim-patient {
@@ -1193,8 +1261,12 @@ button:disabled,
   font-size: 13.5px;
   color: var(--text-secondary);
   font-weight: 500;
-  margin-top: 2px;
+  margin-top: 0;
   min-height: 20px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--card-subtle);
+  border: 1px solid var(--border-subtle);
 }
 
 .btn-download-claim {
@@ -1722,6 +1794,7 @@ button:disabled,
   .dropzone::before,
   .dz-icon-wrap,
   .card,
+  .claim,
   .thumb-item,
   .btn-download-claim,
   .modal-card,

@@ -644,10 +644,14 @@ function renderJob(card, job) {
     claimsEl.dataset.signature = claimsSignature;
     claimsEl.replaceChildren();
     const tpl = $('#claim-tpl');
-    for (const c of claims) {
+    claims.forEach((c, claimIdx) => {
       const el = tpl.content.cloneNode(true).querySelector('.claim');
       const isInj = c.claim_type === '상해';
       el.className = 'claim ' + (isInj ? 'claim-상해' : 'claim-질병');
+      el.setAttribute('aria-label', `청구 ${claimIdx + 1}건, ${c.patient || '알수없음'}, ${c.claim_type || '질병'}`);
+
+      const indexEl = $('.claim-index', el);
+      if (indexEl) indexEl.textContent = String(claimIdx + 1);
 
       const typeEl = $('.type', el);
       if (typeEl) typeEl.textContent = c.claim_type || '질병';
@@ -697,7 +701,7 @@ function renderJob(card, job) {
       }
 
       claimsEl.appendChild(el);
-    }
+    });
   }
 }
 
