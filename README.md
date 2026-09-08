@@ -33,6 +33,15 @@ docker compose up -d --build
 - 컨테이너만 지우고 이미지는 남기면 `docker compose down`, 로그는 `docker compose logs -f backend`
 - Linux 에서는 `mkdir -p data && sudo chown -R 1000:1000 data` 가 먼저 필요 (컨테이너는 uid 1000 으로 실행)
 
+### GHCR 배포 이미지로 실행 (amd64 / arm64)
+
+소스 코드 빌드 없이 GitHub Actions에서 빌드된 최신 멀티 아키텍처 이미지를 바로 사용할 수 있습니다:
+
+```bash
+docker compose -f docker-compose.ghcr.yml up -d
+```
+
+
 ## summary.yaml 스키마
 
 ```yaml

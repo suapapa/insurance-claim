@@ -1,0 +1,35 @@
+# GHCR 배포용 실행 예시:
+#   docker compose -f docker-compose.ghcr.yml up -d
+#
+name: insurance-claim
+
+services:
+  backend:
+    image: ghcr.io/suapapa/insurance-claim-backend:latest
+    init: true
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      INSURANCE_DATA_DIR: /data
+    volumes:
+      - ./data:/data
+    expose:
+      - "8321"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8321/api/jobs', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  frontend:
+    image: ghcr.io/suapapa/insurance-claim-frontend:latest
+    init: true
+    restart: unless-stopped
+    ports:
+      - "8321:80"
+    depends_on:
+      backend:
+        condition: service_healthy
