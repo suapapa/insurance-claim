@@ -1172,7 +1172,7 @@ button:disabled,
 .claim-meta-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
@@ -1223,31 +1223,6 @@ button:disabled,
   color: var(--amber);
 }
 
-.patient-avatar {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--accent-tint);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent);
-  border: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.claim-질병 .patient-avatar {
-  background: var(--green-tint);
-  border-color: var(--green-border);
-  color: var(--green);
-}
-
-.claim-상해 .patient-avatar {
-  background: var(--amber-tint);
-  border-color: var(--amber-border);
-  color: var(--amber);
-}
-
 .claim-patient {
   font-weight: 700;
   font-size: 16.5px;
@@ -1273,21 +1248,24 @@ button:disabled,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 44px;
-  width: 44px;
-  min-height: 44px;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
   padding: 0;
-  border: 1px solid transparent;
+  border: 1px solid var(--border);
   border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--text-muted);
-  transition: color var(--duration) ease, background-color var(--duration) ease, border-color var(--duration) ease, transform var(--duration) var(--ease-out);
+  background: var(--accent-tint);
+  color: var(--accent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: color var(--duration) ease, background-color var(--duration) ease, border-color var(--duration) ease, box-shadow var(--duration) ease, transform var(--duration) var(--ease-out);
 }
 
 .btn-download-claim:hover {
-  border-color: var(--border-subtle);
-  background: var(--card-subtle);
-  color: var(--accent);
+  border-color: var(--border-hover);
+  background: var(--accent);
+  color: #ffffff;
+  box-shadow: var(--btn-primary-shadow);
 }
 
 .btn-download-claim:active {
