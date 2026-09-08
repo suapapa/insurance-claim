@@ -18,7 +18,7 @@ RUN envsubst '${BACKEND_HOST}' < /tmp/nginx.conf.template \
         > /etc/nginx/conf.d/default.conf \
     && rm /tmp/nginx.conf.template
 
-COPY index.html app.js style.css /usr/share/nginx/html/
+COPY index.html app.js style.css favicon.svg favicon.ico apple-touch-icon.png /usr/share/nginx/html/
 
 EXPOSE 80
 
