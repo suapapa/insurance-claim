@@ -7,12 +7,15 @@ from __future__ import annotations
 import datetime as dt
 import mimetypes
 import re
+import tempfile
 import uuid
+import zipfile
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 
 from . import config, pipeline
 
@@ -70,7 +73,7 @@ async def get_job(job_id: str):
 
 @app.get("/api/images/{job_id}/{filename}")
 async def get_image(job_id: str, filename: str):
-    """원본 사진 미리보기 (경로 traversal 차단). HEIC는 웹 호환 WebP로 자동 변환."""
+    """원본 사진 미리보기 (경로 traversal 차단). HEIC는 JPEG로 자동 변환."""
     if not SAFE_ID.match(job_id):
         raise HTTPException(400, "잘못된 작업 ID입니다.")
     base_dir = pipeline._jobs_dir(job_id).resolve()
@@ -78,21 +81,62 @@ async def get_image(job_id: str, filename: str):
     if not str(p).startswith(str(base_dir)) or not p.is_file():
         raise HTTPException(404)
     if p.suffix.lower() in (".heic", ".heif"):
-        cached_webp = base_dir / f"{p.stem}.webp"
-        if not cached_webp.exists():
-            pipeline.convert_to_webp(p, cached_webp)
-        return FileResponse(cached_webp, media_type="image/webp")
+        cached_jpeg = base_dir / f"{p.stem}.preview.jpg"
+        if not cached_jpeg.exists():
+            pipeline.convert_to_jpeg(p, cached_jpeg)
+        return FileResponse(cached_jpeg, media_type="image/jpeg")
     mt = mimetypes.guess_type(str(p))[0] or "application/octet-stream"
     return FileResponse(p, media_type=mt)
 
 
+def _claim_directory(claim_dir: str) -> Path:
+    """청구 디렉터리를 안전하게 확인하고 절대 경로로 반환."""
+    base_dir = config.CLAIMS_DIR.resolve()
+    if Path(claim_dir).name != claim_dir:
+        raise HTTPException(400, "잘못된 청구 디렉터리입니다.")
+    target_dir = (base_dir / claim_dir).resolve()
+    if target_dir.parent != base_dir or not target_dir.is_dir():
+        raise HTTPException(404, "청구 디렉터리를 찾을 수 없습니다.")
+    return target_dir
+
+
+@app.get("/api/claims/{claim_dir}/download")
+async def download_claim_archive(claim_dir: str):
+    """청구 건의 JPEG 이미지와 summary.yaml을 하나의 ZIP으로 다운로드."""
+    target_dir = _claim_directory(claim_dir)
+    summary = target_dir / "summary.yaml"
+    images = sorted(
+        p for p in target_dir.iterdir()
+        if p.is_file() and p.suffix.lower() in pipeline.IMAGE_EXTS
+    )
+    if not summary.is_file():
+        raise HTTPException(409, "청구 정보가 아직 준비되지 않았습니다.")
+
+    temp = tempfile.NamedTemporaryFile(prefix="insurance-claim-", suffix=".zip", delete=False)
+    archive_path = Path(temp.name)
+    temp.close()
+    try:
+        with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+            folder = Path(claim_dir)
+            for image in images:
+                archive.write(image, arcname=str(folder / image.name))
+            archive.write(summary, arcname=str(folder / summary.name))
+    except Exception:
+        archive_path.unlink(missing_ok=True)
+        raise
+
+    return FileResponse(
+        archive_path,
+        media_type="application/zip",
+        filename=f"{claim_dir}.zip",
+        background=BackgroundTask(archive_path.unlink, missing_ok=True),
+    )
+
+
 @app.get("/api/claims/{claim_dir}/{filename}")
 async def get_claim_file(claim_dir: str, filename: str):
-    """청구 디렉터리 내 파일(변환된 webp 이미지, summary.yaml 등) 서빙 (경로 traversal 차단)."""
-    base_dir = config.CLAIMS_DIR.resolve()
-    target_dir = (base_dir / Path(claim_dir).name).resolve()
-    if not str(target_dir).startswith(str(base_dir)) or not target_dir.is_dir():
-        raise HTTPException(404, "청구 디렉터리를 찾을 수 없습니다.")
+    """청구 디렉터리 내 JPEG 이미지, summary.yaml 등을 안전하게 서빙."""
+    target_dir = _claim_directory(claim_dir)
     p = (target_dir / Path(filename).name).resolve()
     if not str(p).startswith(str(target_dir)) or not p.is_file():
         raise HTTPException(404, "파일을 찾을 수 없습니다.")

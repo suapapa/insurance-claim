@@ -30,14 +30,19 @@ _taken_names: set[str] = set()
 
 # ---------------------------------------------------------------- 유틸
 
-def convert_to_webp(src: Path, dest: Path, quality: int = 90) -> None:
-    """모든 포맷(HEIC, JPG, PNG 등)의 이미지를 EXIF 회전을 보정하여 WebP로 변환 저장."""
+def convert_to_jpeg(src: Path, dest: Path, quality: int = 92) -> None:
+    """모든 포맷을 EXIF 회전이 보정된 호환성 높은 JPEG로 변환 저장."""
     with Image.open(src) as img:
         img = ImageOps.exif_transpose(img)
-        if img.mode not in ("RGB", "RGBA"):
+        if "A" in img.getbands():
+            rgba = img.convert("RGBA")
+            background = Image.new("RGB", rgba.size, "white")
+            background.paste(rgba, mask=rgba.getchannel("A"))
+            img = background
+        elif img.mode != "RGB":
             img = img.convert("RGB")
         dest.parent.mkdir(parents=True, exist_ok=True)
-        img.save(dest, format="WEBP", quality=quality)
+        img.save(dest, format="JPEG", quality=quality, optimize=True)
 
 
 def _slug(text: str, max_len: int = 60) -> str:
@@ -58,6 +63,26 @@ def _norm_date(value, fallback: str | None = None) -> str | None:
         if m:
             return f"{int(m.group(1)):04d}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
     return None
+
+
+def _claim_treatment_dates(claim: dict) -> tuple[str | None, str | None]:
+    """카드용 치료 시작일/종료일을 구하고, 이전 잡은 summary.yaml로 보완한다."""
+    start = _norm_date(claim.get("treatment_start"), claim.get("date"))
+    end = _norm_date(claim.get("treatment_end"))
+
+    if (not start or not end) and claim.get("dir"):
+        summary_path = config.CLAIMS_DIR / claim["dir"] / "summary.yaml"
+        if summary_path.is_file():
+            try:
+                summary = yaml.safe_load(summary_path.read_text(encoding="utf-8")) or {}
+                period = str(summary.get("치료기간") or "")
+                period_start, separator, period_end = period.partition("~")
+                start = start or _norm_date(period_start)
+                end = end or _norm_date(period_end if separator else period_start)
+            except (OSError, yaml.YAMLError):
+                pass
+
+    return start, end
 
 
 def _jobs_dir(job_id: str) -> Path:
@@ -99,10 +124,13 @@ def get_job(job_id: str) -> dict | None:
         else:
             return None
 
-    # claims 내 질병코드 한국어 설명 보강 및 이미지 목록 보완
+    # claims 내 질병코드, 치료기간, 이미지 목록 보완
     for c in job.get("claims", []):
         if c.get("diagnosis"):
             c["diagnosis"] = kcd.format_diagnosis(c["diagnosis"])
+        treatment_start, treatment_end = _claim_treatment_dates(c)
+        c["treatment_start"] = treatment_start
+        c["treatment_end"] = treatment_end
         if not c.get("images") and c.get("dir"):
             cdir = config.CLAIMS_DIR / c["dir"]
             if cdir.is_dir():
@@ -233,7 +261,7 @@ def _claim_dir_name(g: dict, seq: int) -> str:
 
 
 def materialize_claim(job_id: str, g: dict, seq: int) -> tuple[Path, list[str]]:
-    """청구 디렉터리를 만들고 속한 사진들을 WebP 포맷으로 변환하여 저장한다. (원본 uploads는 보존)"""
+    """청구 디렉터리를 만들고 속한 사진들을 JPEG로 변환하여 저장한다. (원본 uploads는 보존)"""
     dir_name = _claim_dir_name(g, seq)
     claim_dir = config.CLAIMS_DIR / dir_name
     claim_dir.mkdir(parents=True, exist_ok=True)
@@ -244,14 +272,14 @@ def materialize_claim(job_id: str, g: dict, seq: int) -> tuple[Path, list[str]]:
         if not f or not f.exists():
             continue
         stem = f.stem
-        candidate = f"{stem}.webp"
+        candidate = f"{stem}.jpg"
         idx = 2
         while candidate in used_names or (claim_dir / candidate).exists():
-            candidate = f"{stem}_{idx}.webp"
+            candidate = f"{stem}_{idx}.jpg"
             idx += 1
         used_names.add(candidate)
         dest = claim_dir / candidate
-        convert_to_webp(f, dest)
+        convert_to_jpeg(f, dest)
         moved.append(str(dest))
     return claim_dir, moved
 
@@ -334,6 +362,7 @@ async def extract(claim_dir: Path, images: list[str], hint: dict) -> dict:
 def write_summary(claim_dir: Path, ex: dict, images: list[str], job_id: str) -> None:
     data = {
         # 사고 공통 + 질병 공통 필드를 한 스키마로 통합 (해당 없는 필드는 null)
+        "환자": ex["patient"],
         "청구사유": ex["claim_type"],
         "입원구분": ex["hospitalization"],
         "치료기간": None if not (ex["treatment_start"] or ex["treatment_end"])
@@ -343,7 +372,6 @@ def write_summary(claim_dir: Path, ex: dict, images: list[str], job_id: str) -> 
         "사고장소": ex["incident_place"],
         "사고일시": ex["incident_datetime"],
         "_meta": {
-            "환자": ex["patient"],
             "job_id": job_id,
             "generated_at": dt.datetime.now().isoformat(timespec="seconds"),
             "images": [Path(p).name for p in images],
@@ -378,6 +406,8 @@ async def run_job(job_id: str) -> None:
                 "patient": ex["patient"],
                 "claim_type": ex["claim_type"],
                 "date": ex["treatment_start"] or g.get("date"),
+                "treatment_start": ex["treatment_start"],
+                "treatment_end": ex["treatment_end"],
                 "diagnosis": ex["diagnosis"],
                 "hospitalization": ex["hospitalization"],
                 "images": [Path(p).name for p in images],

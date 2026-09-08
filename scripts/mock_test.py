@@ -61,9 +61,9 @@ async def main():
         p = config.CLAIMS_DIR / c["dir"] / "summary.yaml"
         print(f"\n===== {p} =====")
         print(p.read_text(encoding="utf-8"))
-        imgs = sorted(x.name for x in (config.CLAIMS_DIR / c["dir"]).iterdir() if x.suffix == ".webp")
+        imgs = sorted(x.name for x in (config.CLAIMS_DIR / c["dir"]).iterdir() if x.suffix == ".jpg")
         print("IMAGES:", imgs)
-        assert len(imgs) > 0, f"청구 디렉터리에 변환된 webp 이미지가 없습니다: {c['dir']}"
+        assert len(imgs) > 0, f"청구 디렉터리에 변환된 JPEG 이미지가 없습니다: {c['dir']}"
     assert final["status"] == "done", "잡이 완료되지 않았습니다"
     assert len(final["claims"]) == 2, "청구 건수가 2가 아닙니다"
     print("\nMOCK PIPELINE TEST PASSED")

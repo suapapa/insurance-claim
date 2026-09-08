@@ -2,9 +2,21 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>보험 청구 서류 정리 | AI 자동 분류 & 데이터 추출</title>
   <meta name="description" content="병원·약국 서류 사진을 업로드하면 AI가 환자별, 진단별로 자동 분류하고 summary.yaml을 생성합니다.">
+
+  <!-- Early theme initialization to prevent flash -->
+  <script>
+    (function() {
+      try {
+        var pref = localStorage.getItem('claim_theme_pref') || 'auto';
+        var isDark = pref === 'dark' || (pref === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme-pref', pref);
+      } catch (e) {}
+    })();
+  </script>
   
   <!-- Web Fonts: Pretendard & Plus Jakarta Sans -->
   <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css" />
@@ -22,30 +34,57 @@
   <header class="app-header">
     <div class="header-container">
       <div class="brand">
-        <div class="brand-icon" aria-hidden="true">
+        <div class="brand-icon" aria-hidden="true" title="메디컬 서류 차트">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <path d="M9 13h6"/>
-            <path d="M9 17h4"/>
-            <path d="m16 19 2-2-2-2"/>
+            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+            <path d="M12 11v6"></path>
+            <path d="M9 14h6"></path>
           </svg>
         </div>
         <div class="brand-text">
           <div class="brand-title-row">
             <h1>보험 청구 서류 정리</h1>
-            <span class="badge-ai">AI VISION</span>
+            <span class="badge-ai">CLINICAL AI</span>
           </div>
-          <p class="brand-sub">병원·약국 서류 자동 그룹핑 및 항목 추출 시스템</p>
+          <p class="brand-sub">병원·약국 서류 자동 분류 및 EMR 데이터 추출 시스템</p>
         </div>
       </div>
 
       <div class="header-actions">
-        <div class="live-status" title="백엔드 실시간 동기화 활성">
-          <span class="live-dot"></span>
-          <span class="live-text">실시간 연결됨</span>
+        <!-- Theme Switcher (다크 / 라이트 / 오토) -->
+        <div class="theme-switcher" role="radiogroup" aria-label="테마 모드 선택">
+          <button type="button" class="theme-btn" data-theme-val="light" role="radio" aria-checked="false" title="라이트 모드 (병원 데이 클리닉)">
+            <svg class="theme-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+            <span class="theme-label">라이트</span>
+          </button>
+          <button type="button" class="theme-btn" data-theme-val="dark" role="radio" aria-checked="false" title="다크 모드 (메디컬 워크스테이션)">
+            <svg class="theme-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+            <span class="theme-label">다크</span>
+          </button>
+          <button type="button" class="theme-btn" data-theme-val="auto" role="radio" aria-checked="false" title="오토 모드 (시스템 설정 연동)">
+            <svg class="theme-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+            <span class="theme-label">오토</span>
+          </button>
         </div>
-        <button id="addBtn" class="btn btn-primary" title="새 서류 추가 (단축키: ⌘O / Ctrl+O)">
+
+        <button id="addBtn" class="btn btn-primary" title="새 병원 서류 추가 (단축키: ⌘O / Ctrl+O)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="5" x2="12" y2="19"></line>
             <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -53,48 +92,12 @@
           <span>서류 추가</span>
           <kbd class="kbd-hint">⌘O</kbd>
         </button>
-        <input type="file" id="fileInput" accept="image/*" multiple hidden>
       </div>
     </div>
   </header>
 
   <!-- Main Container -->
   <div class="page-container">
-    <!-- Dropzone Area -->
-    <section class="upload-section">
-      <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="파일 드롭존: 서류 사진을 끌어다 놓거나 클릭하여 선택">
-        <div class="dz-inner">
-          <div class="dz-icon-wrap" aria-hidden="true">
-            <svg class="dz-icon-svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/>
-              <path d="M12 12v9"/>
-              <path d="m16 16-4-4-4 4"/>
-            </svg>
-          </div>
-          <div class="dz-content">
-            <h3 class="dz-title">병원·약국 서류 사진을 여기에 끌어다 놓으세요</h3>
-            <p class="dz-desc">
-              사진을 끌어다 놓거나 <span class="dz-highlight">여기를 클릭</span>하여 파일을 선택하세요
-            </p>
-            <div class="dz-pills" aria-hidden="true">
-              <span class="doc-pill">진단서</span>
-              <span class="doc-pill">소견서</span>
-              <span class="doc-pill">처방전</span>
-              <span class="doc-pill">진료비 영수증</span>
-              <span class="doc-pill">세부내역서</span>
-            </div>
-            <div class="dz-formats">
-              <span>JPG · PNG · HEIC · WebP</span>
-              <span class="sep">•</span>
-              <span>다중 업로드 지원</span>
-              <span class="sep">•</span>
-              <span>최대 128MB</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <!-- Jobs Section -->
     <main class="main-content">
       <div class="section-head">
@@ -115,29 +118,35 @@
         </div>
       </div>
 
+      <div id="loadError" class="load-error" role="alert" hidden>
+        <span>작업 내역을 불러오지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.</span>
+        <button id="retryBtn" class="btn btn-ghost btn-sm" type="button">다시 시도</button>
+      </div>
+
       <!-- Jobs Grid/List -->
       <div id="jobs" class="jobs"></div>
 
       <!-- Composed Empty State -->
       <div id="empty" class="empty-state" hidden>
         <div class="empty-icon-wrap" aria-hidden="true">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect width="18" height="18" x="3" y="3" rx="2"/>
-            <path d="M3 9h18"/>
-            <path d="M9 21V9"/>
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+            <path d="M12 11v6"></path>
+            <path d="M9 14h6"></path>
           </svg>
         </div>
-        <h3 class="empty-title">아직 등록된 청구 작업이 없습니다</h3>
+        <h3 class="empty-title">접수된 병원·약국 서류가 없습니다</h3>
         <p class="empty-desc">
-          병원이나 약국에서 발급받은 영수증, 진단서 사진들을 드래그하여 올려보세요.<br>
-          비전 AI가 환자별·날짜별로 문서를 자동 묶음하고 청구 항목 요약본(summary.yaml)을 만듭니다.
+          서류 추가 버튼을 눌러 진단서, 처방전, 진료비 영수증 사진을 선택하거나 끌어다 놓으세요.<br>
+          메디컬 비전 AI가 환자별·진단별로 서류를 자동 분류하고 청구 요약본(summary.yaml)을 생성합니다.
         </p>
         <button id="emptyUploadBtn" class="btn btn-primary">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="5" x2="12" y2="19"></line>
             <line x1="5" y1="12" x2="19" y2="12"></line>
           </svg>
-          <span>첫 번째 서류 업로드하기</span>
+          <span>첫 번째 서류 접수하기</span>
         </button>
       </div>
     </main>
@@ -148,7 +157,7 @@
     <article class="job card">
       <div class="job-head">
         <div class="job-meta">
-          <span class="status-badge" aria-label="작업 상태">
+          <span class="status-badge">
             <span class="status-pulse" aria-hidden="true"></span>
             <span class="status-text"></span>
           </span>
@@ -165,7 +174,7 @@
       </div>
 
       <!-- Visual Progress Indicator -->
-      <div class="job-progress">
+      <div class="job-progress" role="status" aria-live="polite" aria-atomic="true">
         <div class="progress-bar-track">
           <div class="progress-bar-fill"></div>
         </div>
@@ -176,7 +185,7 @@
       </div>
 
       <!-- Error message container -->
-      <div class="job-error">
+      <div class="job-error" role="alert" aria-atomic="true">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
@@ -201,22 +210,28 @@
   <template id="claim-tpl">
     <div class="claim claim-질병">
       <div class="claim-top">
-        <div class="claim-badges">
-          <span class="badge type"></span>
-          <span class="badge hosp"></span>
-        </div>
-        <div class="claim-date">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <span class="claim-date-text"></span>
-        </div>
-      </div>
-      
-      <div class="claim-body">
         <div class="claim-patient-row">
           <span class="patient-avatar" aria-hidden="true">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           </span>
           <span class="claim-patient"></span>
+        </div>
+        <div class="claim-meta-actions">
+          <div class="claim-date">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span class="claim-date-text"></span>
+          </div>
+          <a class="btn-download-claim" href="#" download aria-label="청구 자료 ZIP 다운로드" title="청구 자료 다운로드">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span class="sr-only">청구 자료 다운로드</span>
+          </a>
+        </div>
+      </div>
+      
+      <div class="claim-body">
+        <div class="claim-badges">
+          <span class="badge type"></span>
+          <span class="badge hosp"></span>
         </div>
         <div class="claim-diagnosis"></div>
         <div class="claim-images-wrap">
@@ -224,21 +239,61 @@
         </div>
       </div>
 
-      <div class="claim-footer">
-        <div class="claim-dir-wrap">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 8 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
-          <code class="claim-dir"></code>
-        </div>
-        <button type="button" class="btn-copy-dir" title="디렉터리 경로 복사">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-          <span>복사</span>
-        </button>
-      </div>
     </div>
   </template>
 
+  <!-- Upload Dialog -->
+  <dialog id="uploadModal" class="upload-modal" aria-labelledby="uploadModalTitle">
+    <div class="upload-modal-card">
+      <div class="upload-modal-header">
+        <div>
+          <h2 id="uploadModalTitle">병원 서류 접수</h2>
+          <p>병원·약국 서류 사진을 업로드하면 메디컬 AI가 환자·진료 건별로 자동 분류합니다.</p>
+        </div>
+        <button id="uploadModalClose" type="button" class="upload-modal-close" aria-label="서류 접수 창 닫기">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="upload-modal-body">
+        <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="파일 드롭존: 서류 사진을 끌어다 놓거나 클릭하여 선택">
+          <div class="dz-inner">
+            <div class="dz-icon-wrap" aria-hidden="true">
+              <svg class="dz-icon-svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <path d="M12 18v-6"/>
+                <path d="m9 15 3-3 3 3"/>
+              </svg>
+            </div>
+            <div class="dz-content">
+              <h3 class="dz-title">병원·약국 서류 사진을 여기에 접수하세요</h3>
+              <p class="dz-desc">
+                사진을 끌어다 놓거나 <span class="dz-highlight">여기를 클릭</span>하여 의무기록·영수증을 선택하세요
+              </p>
+              <div class="dz-pills" aria-hidden="true">
+                <span class="doc-pill"><span class="pill-cross">✚</span> 진단서</span>
+                <span class="doc-pill"><span class="pill-cross">✚</span> 소견서</span>
+                <span class="doc-pill"><span class="pill-cross">℞</span> 처방전</span>
+                <span class="doc-pill"><span class="pill-cross">₩</span> 진료비 영수증</span>
+                <span class="doc-pill"><span class="pill-cross">📋</span> 세부내역서</span>
+              </div>
+              <div class="dz-formats">
+                <span>JPG · PNG · HEIC · WebP</span>
+                <span class="sep">•</span>
+                <span>다중 서류 일괄 접수</span>
+                <span class="sep">•</span>
+                <span>최대 128MB</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <input type="file" id="fileInput" accept="image/*" multiple hidden>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Image Lightbox Modal Dialog -->
-  <dialog id="imageModal" class="image-modal">
+  <dialog id="imageModal" class="image-modal" aria-labelledby="modalFilename">
     <div class="modal-card">
       <div class="modal-header">
         <div class="modal-title-wrap">
@@ -247,13 +302,8 @@
           <span id="modalCounter" class="modal-counter">1 / 1</span>
         </div>
         <div class="modal-actions">
-          <div class="modal-kbd-hint" title="키보드 좌우 화살표 키로 사진 탐색">
-            <kbd>←</kbd><kbd>→</kbd>
-            <span>탐색</span>
-          </div>
-          <a id="modalDownload" href="#" download class="btn btn-ghost btn-sm" title="다운로드">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <span>다운로드</span>
+          <a id="modalDownload" href="#" download class="btn btn-ghost btn-sm" aria-label="현재 사진 다운로드" title="사진 다운로드">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           </a>
           <button id="modalClose" type="button" class="btn btn-ghost btn-sm" aria-label="닫기 (Esc)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -279,7 +329,8 @@
   </dialog>
 
   <!-- Toast Notification Container -->
-  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+  <div id="appAnnouncements" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div id="toastContainer" class="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <script src="app.js"></script>
 </body>

@@ -6,6 +6,7 @@ data/
 .DS_Store
 
 # Agent files
+.codex/
 .agents/
 .agent/
 skills-lock.json

@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from PIL import Image
+import yaml
 
 from backend import config, pipeline, vision
 
@@ -50,6 +51,42 @@ class TestCore(unittest.TestCase):
         self.assertEqual(pipeline._norm_date("2026년08월10일"), "2026-08-10")
         self.assertEqual(pipeline._norm_date(None, fallback="2026-07-01"), "2026-07-01")
         self.assertIsNone(pipeline._norm_date("날짜 없음"))
+
+    def test_claim_treatment_dates_uses_current_metadata(self):
+        """새 잡의 카드 메타데이터에서 치료 시작일과 종료일을 그대로 사용한다."""
+        claim = {
+            "date": "2026-01-01",
+            "treatment_start": "2026-01-02",
+            "treatment_end": "2026-02-03",
+        }
+        self.assertEqual(
+            pipeline._claim_treatment_dates(claim),
+            ("2026-01-02", "2026-02-03"),
+        )
+
+    def test_claim_treatment_dates_recovers_legacy_job_from_summary(self):
+        """기간 필드가 없는 이전 잡은 summary.yaml의 치료기간으로 보완한다."""
+        tmp = Path(tempfile.mkdtemp())
+        orig_claims_dir = config.CLAIMS_DIR
+        config.CLAIMS_DIR = tmp
+        try:
+            claim_dir = tmp / "legacy-claim"
+            claim_dir.mkdir()
+            (claim_dir / "summary.yaml").write_text(
+                "치료기간: 2025-11-15~2026-02-02\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                pipeline._claim_treatment_dates({
+                    "dir": "legacy-claim",
+                    "date": "2025-11-15",
+                }),
+                ("2025-11-15", "2026-02-02"),
+            )
+        finally:
+            config.CLAIMS_DIR = orig_claims_dir
+            shutil.rmtree(tmp, ignore_errors=True)
 
     def test_claim_dir_name_collision(self):
         """디스크에 이미 존재하는 디렉터리 및 메모리 중복 시 (2) 접미사 자동 부여 검증."""
@@ -109,26 +146,27 @@ class TestCore(unittest.TestCase):
             "H368(기타 망막장애), H400(녹내장의증)"
         )
 
-    def test_convert_to_webp(self):
-        """임의의 이미지를 WebP로 정상 변환하는지 검증."""
+    def test_convert_to_jpeg(self):
+        """투명도가 있는 이미지를 흰 배경의 JPEG로 정상 변환하는지 검증."""
         tmp = Path(tempfile.mkdtemp())
         try:
             src = tmp / "test.png"
             img = Image.new("RGBA", (100, 100), color=(255, 0, 0, 128))
             img.save(src, "PNG")
 
-            dest = tmp / "converted.webp"
-            pipeline.convert_to_webp(src, dest)
+            dest = tmp / "converted.jpg"
+            pipeline.convert_to_jpeg(src, dest)
 
             self.assertTrue(dest.exists())
             with Image.open(dest) as out_img:
-                self.assertEqual(out_img.format, "WEBP")
+                self.assertEqual(out_img.format, "JPEG")
+                self.assertEqual(out_img.mode, "RGB")
                 self.assertEqual(out_img.size, (100, 100))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
-    def test_materialize_claim_converts_to_webp(self):
-        """materialize_claim이 모든 원본 이미지를 .webp로 변환하여 claim_dir에 저장하는지 검증."""
+    def test_materialize_claim_converts_to_jpeg(self):
+        """materialize_claim이 모든 원본 이미지를 .jpg로 변환하여 claim_dir에 저장하는지 검증."""
         tmp = Path(tempfile.mkdtemp())
         orig_claims_dir = config.CLAIMS_DIR
         config.CLAIMS_DIR = tmp
@@ -165,13 +203,38 @@ class TestCore(unittest.TestCase):
             for path_str in moved:
                 p = Path(path_str)
                 self.assertTrue(p.exists())
-                self.assertEqual(p.suffix, ".webp")
+                self.assertEqual(p.suffix, ".jpg")
                 with Image.open(p) as loaded:
-                    self.assertEqual(loaded.format, "WEBP")
+                    self.assertEqual(loaded.format, "JPEG")
         finally:
             config.CLAIMS_DIR = orig_claims_dir
             shutil.rmtree(tmp, ignore_errors=True)
             shutil.rmtree(pipeline._jobs_dir("test_mat_job"), ignore_errors=True)
+
+    def test_write_summary_places_patient_at_top_level(self):
+        """환자명은 내부 메타데이터가 아니라 청구 정보의 최상위 필드로 기록한다."""
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            ex = {
+                "patient": "이용관",
+                "claim_type": "질병",
+                "hospitalization": "통원",
+                "treatment_start": "2025-11-15",
+                "treatment_end": "2026-02-02",
+                "diagnosis": "H368(기타 망막장애), H400(녹내장의증)",
+                "incident_desc": None,
+                "incident_place": None,
+                "incident_datetime": None,
+                "warnings": None,
+            }
+
+            pipeline.write_summary(tmp, ex, ["/tmp/IMG_6005.jpg"], "dd4404da")
+            summary = yaml.safe_load((tmp / "summary.yaml").read_text(encoding="utf-8"))
+
+            self.assertEqual(summary["환자"], "이용관")
+            self.assertNotIn("환자", summary["_meta"])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":
