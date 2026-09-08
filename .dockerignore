@@ -1,0 +1,23 @@
+# 빌드 컨텍스트를 작게 유지 (backend 이미지 루트 컨텍스트용)
+.git
+.gitignore
+.venv
+venv
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 시크릿 & 런타임 데이터: 절대 이미지 안에 넣지 않는다
+.env
+.env.*
+!.env.example
+data/
+
+# 개발용 스크립트/문서는 이미지에 불필요
+scripts/
+.DS_Store
+docker-compose.yml
+frontend/nginx.conf

@@ -20,6 +20,18 @@ uv run uvicorn backend.main:app --host 0.0.0.0 --port 8321
 
 `http://localhost:8321` 접속.
 
+## Docker로 실행
+
+```bash
+cp .env.example .env   # LLM_BASE_URL / LLM_API_KEY / VISION_MODEL 설정
+docker compose up -d --build
+```
+
+- `frontend` (nginx) 가 정적 UI 를 서빙하고 `/api` 를 `backend` 로 프록시 → `http://localhost:8321`
+- 업로드 원본 / 분류 결과는 호스트의 `./data` 에 저장됨 (`docker compose down` 후에도 유지)
+- 컨테이너만 지우고 이미지는 남기면 `docker compose down`, 로그는 `docker compose logs -f backend`
+- Linux 에서는 `mkdir -p data && sudo chown -R 1000:1000 data` 가 먼저 필요 (컨테이너는 uid 1000 으로 실행)
+
 ## summary.yaml 스키마
 
 ```yaml

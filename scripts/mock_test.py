@@ -33,7 +33,7 @@ FAKE_EXTRACT = {
 }
 
 
-async def fake_ask_vision(prompt, image_paths, max_tokens=4096):
+async def fake_ask_vision(prompt, image_paths, max_tokens=4096, **kwargs):
     return FAKE_EXTRACT if "보험금 청구 데이터를 추출" in prompt else FAKE_CLASSIFY
 
 
@@ -44,7 +44,13 @@ async def main():
     job = pipeline.create_job(files)
     d = pipeline._jobs_dir(job["id"])
     for i in (1, 2, 3):
-        shutil.copy(f"/tmp/test_docs/{['diag_kim','rx_kim','diag_park'][i-1]}.jpg", d / f"doc{i}.jpg")
+        src_path = Path(f"/tmp/test_docs/{['diag_kim','rx_kim','diag_park'][i-1]}.jpg")
+        if src_path.exists():
+            shutil.copy(src_path, d / f"doc{i}.jpg")
+        else:
+            from PIL import Image
+            img = Image.new("RGB", (400, 300), color=(240, 240, 240))
+            img.save(d / f"doc{i}.jpg", "JPEG")
 
     await pipeline.run_job(job["id"])
 
@@ -55,8 +61,9 @@ async def main():
         p = config.CLAIMS_DIR / c["dir"] / "summary.yaml"
         print(f"\n===== {p} =====")
         print(p.read_text(encoding="utf-8"))
-        imgs = sorted(x.name for x in (config.CLAIMS_DIR / c["dir"]).iterdir() if x.suffix == ".jpg")
+        imgs = sorted(x.name for x in (config.CLAIMS_DIR / c["dir"]).iterdir() if x.suffix == ".webp")
         print("IMAGES:", imgs)
+        assert len(imgs) > 0, f"청구 디렉터리에 변환된 webp 이미지가 없습니다: {c['dir']}"
     assert final["status"] == "done", "잡이 완료되지 않았습니다"
     assert len(final["claims"]) == 2, "청구 건수가 2가 아닙니다"
     print("\nMOCK PIPELINE TEST PASSED")

@@ -11,8 +11,13 @@ import uuid
 from pathlib import Path
 
 import yaml
+from PIL import Image, ImageOps
+import pillow_heif
 
-from . import config, prompts, vision
+# HEIC/HEIF 이미지 포맷 자동 지원 등록
+pillow_heif.register_heif_opener()
+
+from . import config, kcd, prompts, vision
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".bmp", ".tif", ".tiff"}
 
@@ -25,12 +30,23 @@ _taken_names: set[str] = set()
 
 # ---------------------------------------------------------------- 유틸
 
+def convert_to_webp(src: Path, dest: Path, quality: int = 90) -> None:
+    """모든 포맷(HEIC, JPG, PNG 등)의 이미지를 EXIF 회전을 보정하여 WebP로 변환 저장."""
+    with Image.open(src) as img:
+        img = ImageOps.exif_transpose(img)
+        if img.mode not in ("RGB", "RGBA"):
+            img = img.convert("RGB")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        img.save(dest, format="WEBP", quality=quality)
+
+
 def _slug(text: str, max_len: int = 60) -> str:
     """디렉터리 이름에 안전한 형태로 정리."""
     text = (text or "알수없음").strip()
     text = re.sub(r'[\\/:*?"<>|\s]+', "_", text)
     text = re.sub(r"_{2,}", "_", text).strip("_")
-    return (text or "알수없음")[:max_len]
+    res = (text or "알수없음")[:max_len]
+    return res.rstrip("_,(-")
 
 
 def _norm_date(value, fallback: str | None = None) -> str | None:
@@ -38,7 +54,7 @@ def _norm_date(value, fallback: str | None = None) -> str | None:
     for v in (value, fallback):
         if not v:
             continue
-        m = re.search(r"(\d{4})[-./](\d{1,2})[-./](\d{1,2})", str(v))
+        m = re.search(r"(\d{4})[-./년\s]+(\d{1,2})[-./월\s]+(\d{1,2})", str(v))
         if m:
             return f"{int(m.group(1)):04d}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
     return None
@@ -63,22 +79,35 @@ def get_job(job_id: str) -> dict | None:
     """메모리에 없으면 디스크에서 복구 (서버 재시작 대비)."""
     with _jobs_lock:
         if job_id in _jobs:
-            return _jobs[job_id]
-    p = _jobs_dir(job_id) / "job.json"
-    if p.exists():
-        try:
-            job = json.loads(p.read_text(encoding="utf-8"))
-        except Exception:
+            job = dict(_jobs[job_id])
+        else:
+            job = None
+    if job is None:
+        p = _jobs_dir(job_id) / "job.json"
+        if p.exists():
+            try:
+                job = json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                return None
+            # 재시작 중이던 잡은 interrupted로 표시
+            if job.get("status") in ("classifying", "extracting", "queued"):
+                job["status"] = "failed"
+                job["error"] = "서버 재시작으로 중단되었습니다. 다시 업로드해 주세요."
+                with _jobs_lock:
+                    _jobs[job_id] = job
+                p.write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
+        else:
             return None
-        # 재시작 중이던 잡은 interrupted로 표시
-        if job.get("status") in ("classifying", "extracting", "queued"):
-            job["status"] = "failed"
-            job["error"] = "서버 재시작으로 중단되었습니다. 다시 업로드해 주세요."
-            with _jobs_lock:
-                _jobs[job_id] = job
-            p.write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
-        return job
-    return None
+
+    # claims 내 질병코드 한국어 설명 보강 및 이미지 목록 보완
+    for c in job.get("claims", []):
+        if c.get("diagnosis"):
+            c["diagnosis"] = kcd.format_diagnosis(c["diagnosis"])
+        if not c.get("images") and c.get("dir"):
+            cdir = config.CLAIMS_DIR / c["dir"]
+            if cdir.is_dir():
+                c["images"] = sorted([f.name for f in cdir.iterdir() if f.suffix.lower() in IMAGE_EXTS])
+    return dict(job)
 
 
 def list_jobs() -> list[dict]:
@@ -127,20 +156,29 @@ async def _classify_chunk(job_id: str, paths: list[str], offset: int) -> list[di
             f"{i}. {Path(p).name}" for i, p in enumerate(paths, offset + 1)
         ),
         paths,
+        start_index=offset + 1,
     )
     groups = result.get("groups") if isinstance(result, dict) else result
     if not isinstance(groups, list):
         raise ValueError(f"분류 응답 형식 오류: {result!r:.200}")
     out = []
     for g in groups:
-        nos = [int(n) for n in g.get("image_nos", []) if 1 <= int(n) <= offset + len(paths)]
+        raw_nos = []
+        for n in g.get("image_nos", []):
+            m = re.search(r"\d+", str(n))
+            if m:
+                raw_nos.append(int(m.group()))
+        # LLM이 offset을 무시하고 청크 내 상대 번호(1~len(paths))로 반환한 경우 보정
+        if offset > 0 and raw_nos and all(1 <= x <= len(paths) for x in raw_nos):
+            raw_nos = [x + offset for x in raw_nos]
+        nos = [x for x in raw_nos if offset + 1 <= x <= offset + len(paths)]
         if not nos:
             continue
         out.append({
             "patient": str(g.get("patient") or "알수없음"),
             "claim_type": "상해" if str(g.get("claim_type", "")).startswith("상해") else "질병",
             "date": _norm_date(g.get("date")),
-            "diagnosis": str(g.get("diagnosis") or ""),
+            "diagnosis": kcd.format_diagnosis(str(g.get("diagnosis") or "")),
             "image_nos": nos,
         })
     return out
@@ -186,26 +224,34 @@ def _claim_dir_name(g: dict, seq: int) -> str:
     base = f"{date}_{_slug(g['patient'])}_{_slug(g['diagnosis'], 40) or '미상'}"
     name = base
     i = 2
-    while name in _taken_names:
-        name = f"{base}({i})"
-        i += 1
-    _taken_names.add(name)
+    with _jobs_lock:
+        while name in _taken_names or (config.CLAIMS_DIR / name).exists():
+            name = f"{base}({i})"
+            i += 1
+        _taken_names.add(name)
     return name
 
 
 def materialize_claim(job_id: str, g: dict, seq: int) -> tuple[Path, list[str]]:
-    """청구 디렉터리를 만들고 속한 사진들을 복제한다. (원본 uploads는 보존)"""
+    """청구 디렉터리를 만들고 속한 사진들을 WebP 포맷으로 변환하여 저장한다. (원본 uploads는 보존)"""
     dir_name = _claim_dir_name(g, seq)
     claim_dir = config.CLAIMS_DIR / dir_name
     claim_dir.mkdir(parents=True, exist_ok=True)
-    src = _jobs_dir(job_id)
     moved = []
+    used_names: set[str] = set()
     for no in g["image_nos"]:
         f = job_file(job_id, no)
         if not f or not f.exists():
             continue
-        dest = claim_dir / f.name
-        shutil.copy2(f, dest)
+        stem = f.stem
+        candidate = f"{stem}.webp"
+        idx = 2
+        while candidate in used_names or (claim_dir / candidate).exists():
+            candidate = f"{stem}_{idx}.webp"
+            idx += 1
+        used_names.add(candidate)
+        dest = claim_dir / candidate
+        convert_to_webp(f, dest)
         moved.append(str(dest))
     return claim_dir, moved
 
@@ -250,7 +296,7 @@ def _sanitize(ex: dict, g: dict) -> dict:
         "hospitalization": hosp,
         "treatment_start": start,
         "treatment_end": end,
-        "diagnosis": ex.get("diagnosis") or g.get("diagnosis") or None,
+        "diagnosis": kcd.format_diagnosis(ex.get("diagnosis") or g.get("diagnosis") or None),
     }
     if claim_type == "상해":
         dtv = None
@@ -334,6 +380,7 @@ async def run_job(job_id: str) -> None:
                 "date": ex["treatment_start"] or g.get("date"),
                 "diagnosis": ex["diagnosis"],
                 "hospitalization": ex["hospitalization"],
+                "images": [Path(p).name for p in images],
             })
 
         _update_job(job_id, status="done", progress="완료", claims=claims_meta)

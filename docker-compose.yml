@@ -1,0 +1,57 @@
+# 로컬 실행:
+#   cp .env.example .env      # LLM_BASE_URL / LLM_API_KEY / VISION_MODEL 설정
+#   docker compose up -d --build
+#   → http://localhost:8321
+#
+# data/uploads(원본) · data/claims(분류 결과 + summary.yaml)는 호스트의 ./data 에
+# 그대로 보이도록 bind mount 했다. 호스트에 노출하고 싶지 않다면 아래 volumes 를
+# named volume 형태("claim-data:/data")로 바꾸고 최상위에 volumes 를 선언할 것.
+#
+# Linux 에서 ./data 를 직접 만들었을 때: 컨테이너는 uid 1000 으로 실행되므로
+# 미리 "mkdir -p data && sudo chown -R 1000:1000 data" 해두면 된다(macOS 는 무관).
+
+name: insurance-claim
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: insurance-claim-backend:0.1.0
+    init: true
+    restart: unless-stopped
+    env_file:
+      # .env 가 없어도 기동은 되고 config.py 기본값으로 동작한다
+      - path: .env
+        required: false
+    environment:
+      INSURANCE_DATA_DIR: /data
+    volumes:
+      - ./data:/data
+    # 브라우저는 frontend(80) 를 통해서만 접근한다.
+    # 백엔드를 직접 노출하려면 "ports: [\"8322:8321\"]" 추가.
+    expose:
+      - "8321"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8321/api/jobs', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # backend 서비스 이름을 바꾸면 여기까지 같이 바꿔야 한다
+        BACKEND_HOST: backend:8321
+    image: insurance-claim-frontend:0.1.0
+    init: true
+    restart: unless-stopped
+    ports:
+      # README 의 http://localhost:8321 주소 유지
+      - "8321:80"
+    depends_on:
+      backend:
+        condition: service_healthy
