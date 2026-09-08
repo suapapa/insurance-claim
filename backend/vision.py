@@ -65,6 +65,8 @@ async def ask_vision(
         "messages": [{"role": "user", "content": content}],
         "temperature": 0,
         "max_tokens": max_tokens,
+        # Qwen3.8-Flash-Next 등: thinking이 max_tokens를 잡아 JSON이 잘리는 것 방지
+        "chat_template_kwargs": {"enable_thinking": config.ENABLE_THINKING},
     }
     headers = {"Authorization": f"Bearer {config.LLM_API_KEY}"}
     async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0)) as client:
