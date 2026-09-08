@@ -33,7 +33,7 @@ FAKE_EXTRACT = {
 }
 
 
-async def fake_ask_vision(prompt, image_paths, max_tokens=4096, **kwargs):
+async def fake_ask_vision(prompt, image_paths, max_tokens=None, **kwargs):
     return FAKE_EXTRACT if "보험금 청구 데이터를 추출" in prompt else FAKE_CLASSIFY
 
 

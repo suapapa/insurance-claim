@@ -34,10 +34,16 @@ VISION_MODEL = os.environ.get("VISION_MODEL", "DeepSeek/deepseek-v4-flash-vision
 # 한 번의 분류/추출 호출에 보낼 최대 이미지 수
 MAX_IMAGES_PER_CALL = int(os.environ.get("MAX_IMAGES_PER_CALL", "10"))
 
-# Qwen3.8 등 thinking 모델: JSON 추출은 reasoning 예산에 잘리므로 기본 OFF
-ENABLE_THINKING = os.environ.get("ENABLE_THINKING", "false").strip().lower() in (
+# reasoning + JSON이 같이 깎이지 않도록 기본 16k (Qwen3.8 thinking 권장)
+MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "16384"))
+
+# Qwen3.8 등: thinking 유지(기본 ON). OFF면 chat_template_kwargs.enable_thinking=false
+ENABLE_THINKING = os.environ.get("ENABLE_THINKING", "true").strip().lower() in (
     "1",
     "true",
     "yes",
     "on",
 )
+
+# xhigh|medium|low — thinking 유지 시 기본 low (JSON 잘림 완화)
+REASONING_EFFORT = os.environ.get("REASONING_EFFORT", "low").strip().lower() or "low"

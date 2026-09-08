@@ -51,10 +51,12 @@ def extract_json(text: str):
 async def ask_vision(
     prompt: str,
     image_paths: list[str],
-    max_tokens: int = 4096,
+    max_tokens: int | None = None,
     start_index: int = 1,
 ) -> dict | list:
     """사진 목록 + 프롬프트를 보내고 JSON 구조화된 응답을 반환."""
+    if max_tokens is None:
+        max_tokens = config.MAX_TOKENS
     content: list[dict] = [{"type": "text", "text": prompt}]
     for i, p in enumerate(image_paths, start_index):
         content.append({"type": "text", "text": f"[사진 {i}]"})
@@ -65,9 +67,11 @@ async def ask_vision(
         "messages": [{"role": "user", "content": content}],
         "temperature": 0,
         "max_tokens": max_tokens,
-        # Qwen3.8-Flash-Next 등: thinking이 max_tokens를 잡아 JSON이 잘리는 것 방지
         "chat_template_kwargs": {"enable_thinking": config.ENABLE_THINKING},
     }
+    if config.ENABLE_THINKING:
+        # reasoning이 예산을 과도하게 쓰지 않도록 (기본 low)
+        payload["reasoning_effort"] = config.REASONING_EFFORT
     headers = {"Authorization": f"Bearer {config.LLM_API_KEY}"}
     async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0)) as client:
         r = await client.post(f"{config.LLM_BASE_URL}/chat/completions", json=payload, headers=headers)
