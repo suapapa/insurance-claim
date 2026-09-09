@@ -1,4 +1,4 @@
-"""비전 LLM을 목으로 대체해 파이프라인(분류->복제->추출->summary.yaml)을 검증하는 스크립트.
+"""비전 LLM을 목으로 대체해 파이프라인(분류->링크->추출->summary.yaml)을 검증하는 스크립트.
 
 사용: uv run python scripts/mock_test.py
 """
@@ -63,7 +63,7 @@ async def main():
         print(p.read_text(encoding="utf-8"))
         imgs = sorted(x.name for x in (config.CLAIMS_DIR / c["dir"]).iterdir() if x.suffix == ".jpg")
         print("IMAGES:", imgs)
-        assert len(imgs) > 0, f"청구 디렉터리에 변환된 JPEG 이미지가 없습니다: {c['dir']}"
+        assert len(imgs) > 0, f"청구 디렉터리에 원본 이미지 링크가 없습니다: {c['dir']}"
     assert final["status"] == "done", "잡이 완료되지 않았습니다"
     assert len(final["claims"]) == 2, "청구 건수가 2가 아닙니다"
     print("\nMOCK PIPELINE TEST PASSED")

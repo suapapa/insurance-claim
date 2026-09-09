@@ -72,6 +72,7 @@
   --amber-border: rgba(245, 158, 11, 0.3);
 
   --red: #f43f5e;
+  --danger-solid: #be123c;
   --red-tint: rgba(244, 63, 94, 0.13);
   --red-border: rgba(244, 63, 94, 0.3);
 
@@ -146,6 +147,7 @@
   --amber-border: rgba(217, 119, 6, 0.28);
 
   --red: #c61d45;
+  --danger-solid: #be123c;
   --red-tint: rgba(225, 29, 72, 0.09);
   --red-border: rgba(225, 29, 72, 0.28);
 
@@ -815,6 +817,46 @@ button:disabled,
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.job-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-delete-job {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 11px;
+  border: 1px solid var(--red-border);
+  border-radius: var(--r-sm);
+  background: var(--red-tint);
+  color: var(--red);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--duration) ease, background-color var(--duration) ease, border-color var(--duration) ease, transform var(--duration) var(--ease-out);
+}
+
+.btn-delete-job:hover:not(:disabled) {
+  border-color: var(--red);
+  background: var(--danger-solid);
+  color: #ffffff;
+}
+
+.btn-delete-job:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.job.is-deleting {
+  opacity: 0.62;
+  pointer-events: none;
 }
 
 /* Status Badges */
@@ -1775,6 +1817,7 @@ button:disabled,
   .claim,
   .thumb-item,
   .btn-download-claim,
+  .btn-delete-job,
   .modal-card,
   .modal-body,
   .modal-nav-btn,

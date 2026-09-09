@@ -165,8 +165,26 @@ class TestCore(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
-    def test_materialize_claim_converts_to_jpeg(self):
-        """materialize_claim이 모든 원본 이미지를 .jpg로 변환하여 claim_dir에 저장하는지 검증."""
+    def test_create_thumbnail_preserves_ratio_and_limits_size(self):
+        """썸네일은 작은 JPEG로 생성되고 원본 비율과 최대 크기를 지킨다."""
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            src = tmp / "large.png"
+            Image.new("RGBA", (1200, 600), color=(255, 0, 0, 128)).save(src, "PNG")
+
+            thumbnail = pipeline.create_thumbnail(src)
+
+            self.assertEqual(thumbnail.parent.name, ".thumbnails")
+            self.assertLess(thumbnail.stat().st_size, src.stat().st_size)
+            with Image.open(thumbnail) as loaded:
+                self.assertEqual(loaded.format, "JPEG")
+                self.assertEqual(loaded.mode, "RGB")
+                self.assertEqual(loaded.size, (320, 160))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_materialize_claim_creates_relative_symlinks(self):
+        """materialize_claim은 형식을 유지한 상대 링크로 업로드 원본을 참조한다."""
         tmp = Path(tempfile.mkdtemp())
         orig_claims_dir = config.CLAIMS_DIR
         config.CLAIMS_DIR = tmp
@@ -200,12 +218,15 @@ class TestCore(unittest.TestCase):
             claim_dir, moved = pipeline.materialize_claim(job_id, g, 1)
             self.assertTrue(claim_dir.is_dir())
             self.assertEqual(len(moved), 2)
-            for path_str in moved:
+            self.assertEqual([Path(path).suffix for path in moved], [".jpg", ".png"])
+            for path_str, expected_name in zip(moved, ("doc1.jpg", "doc2.png")):
                 p = Path(path_str)
                 self.assertTrue(p.exists())
-                self.assertEqual(p.suffix, ".jpg")
+                self.assertTrue(p.is_symlink())
+                self.assertFalse(p.readlink().is_absolute())
+                self.assertEqual(p.resolve(), (job_dir / expected_name).resolve())
                 with Image.open(p) as loaded:
-                    self.assertEqual(loaded.format, "JPEG")
+                    self.assertEqual(loaded.size, (60, 60))
         finally:
             config.CLAIMS_DIR = orig_claims_dir
             shutil.rmtree(tmp, ignore_errors=True)

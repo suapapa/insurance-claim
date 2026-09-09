@@ -36,6 +36,7 @@ let currentGalleryIndex = 0;
 let refreshInFlight = false;
 let uploadInFlight = false;
 let imageDialogReturnFocus = null;
+const deletingJobs = new Set();
 
 function announce(message) {
   if (appAnnouncements) appAnnouncements.textContent = message;
@@ -508,7 +509,11 @@ function jobImageUrl(jobId, filename) {
   return `/api/images/${encodeURIComponent(jobId)}/${encodeURIComponent(filename)}`;
 }
 
-function createDocumentThumbnail({ className, imageSrc, name, index, total, badge, gallery }) {
+function thumbnailUrl(url) {
+  return `${url}${url.includes('?') ? '&' : '?'}thumbnail=true`;
+}
+
+function createDocumentThumbnail({ className, imageSrc, thumbnailSrc, name, index, total, badge, gallery }) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = className;
@@ -517,10 +522,15 @@ function createDocumentThumbnail({ className, imageSrc, name, index, total, badg
   button.setAttribute('aria-haspopup', 'dialog');
 
   const image = document.createElement('img');
-  image.src = imageSrc;
+  image.src = thumbnailSrc;
   image.alt = '';
   image.loading = 'lazy';
   image.decoding = 'async';
+  image.width = 320;
+  image.height = 320;
+  image.addEventListener('error', () => {
+    if (image.src !== new URL(imageSrc, window.location.href).href) image.src = imageSrc;
+  }, { once: true });
   button.appendChild(image);
 
   if (badge !== undefined) {
@@ -544,8 +554,16 @@ function createDocumentThumbnail({ className, imageSrc, name, index, total, badg
 function renderJob(card, job) {
   const status = STATUS_LABEL[job.status] || job.status || '상태 확인 중';
   const active = ['queued', 'classifying', 'extracting'].includes(job.status);
+  const deleting = deletingJobs.has(String(job.id));
   card.dataset.status = job.status || '';
-  card.setAttribute('aria-busy', String(active));
+  card.setAttribute('aria-busy', String(active || deleting));
+  card.classList.toggle('is-deleting', deleting);
+
+  const deleteButton = $('.btn-delete-job', card);
+  if (deleteButton) {
+    deleteButton.disabled = deleting;
+    deleteButton.onclick = () => deleteEntireJob(card, job);
+  }
 
   // 상태 뱃지
   const badge = $('.status-badge', card);
@@ -585,7 +603,7 @@ function renderJob(card, job) {
       if (job.status === 'done') {
         progText.textContent = `완료 · 청구 ${job.claims?.length ?? 0}건 정리됨`;
       } else {
-        progText.textContent = `${status} — ${job.progress || '진행 중'}`;
+        progText.textContent = `${status} - ${job.progress || '진행 중'}`;
       }
       prog.setAttribute('aria-label', progText.textContent);
     }
@@ -621,6 +639,7 @@ function renderJob(card, job) {
         filesStrip.appendChild(createDocumentThumbnail({
           className: 'thumb-item',
           imageSrc: jobImageUrl(job.id, f.saved),
+          thumbnailSrc: thumbnailUrl(jobImageUrl(job.id, f.saved)),
           name: f.original || f.saved,
           index: idx,
           total: files.length,
@@ -680,9 +699,11 @@ function renderJob(card, job) {
           downloadName: name,
         }));
         claimImages.forEach((imgName, imgIdx) => {
+          const imageSrc = `/api/claims/${encodeURIComponent(c.dir)}/${encodeURIComponent(imgName)}`;
           imagesStrip.appendChild(createDocumentThumbnail({
             className: 'claim-thumb',
-            imageSrc: `/api/claims/${encodeURIComponent(c.dir)}/${encodeURIComponent(imgName)}`,
+            imageSrc,
+            thumbnailSrc: thumbnailUrl(imageSrc),
             name: imgName,
             index: imgIdx,
             total: claimImages.length,
@@ -702,6 +723,36 @@ function renderJob(card, job) {
 
       claimsEl.appendChild(el);
     });
+  }
+}
+
+async function deleteEntireJob(card, job) {
+  const jobId = String(job.id);
+  if (deletingJobs.has(jobId)) return;
+
+  const fileCount = job.files?.length ?? 0;
+  const claimCount = job.claims?.length ?? 0;
+  const confirmed = window.confirm(
+    `작업 #${jobId}를 전체 삭제할까요?\n\n` +
+    `업로드 원본 ${fileCount}장과 생성된 청구 ${claimCount}건이 함께 삭제되며 복구할 수 없습니다.`
+  );
+  if (!confirmed) return;
+
+  deletingJobs.add(jobId);
+  renderJob(card, job);
+  try {
+    const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error(await responseError(response));
+    const result = await response.json();
+    card.remove();
+    announce(`작업 #${jobId}가 삭제되었습니다.`);
+    showToast(`작업과 청구 ${result.deleted_claims ?? claimCount}건을 삭제했습니다.`, 'success');
+    await refresh();
+  } catch (error) {
+    showToast(`작업 삭제 실패: ${error.message}`, 'error', 4500);
+  } finally {
+    deletingJobs.delete(jobId);
+    if (card.isConnected) renderJob(card, job);
   }
 }
 

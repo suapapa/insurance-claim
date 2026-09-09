@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import json
+import os
 import re
 import shutil
 import threading
@@ -20,12 +21,19 @@ pillow_heif.register_heif_opener()
 from . import config, kcd, prompts, vision
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".bmp", ".tif", ".tiff"}
+THUMBNAIL_SIZE = (320, 320)
+THUMBNAIL_QUALITY = 78
 
 _jobs: dict[str, dict] = {}
-_jobs_lock = threading.Lock()
+_jobs_lock = threading.RLock()
+_deleted_jobs: set[str] = set()
 
 # 같은 배치 안에서 이름이 겹치는 청구 디렉터리에 붙이는 접미사 관리
 _taken_names: set[str] = set()
+
+
+class JobDeleted(Exception):
+    """사용자가 처리 중인 작업을 삭제했을 때 파이프라인을 조용히 중단한다."""
 
 
 # ---------------------------------------------------------------- 유틸
@@ -43,6 +51,56 @@ def convert_to_jpeg(src: Path, dest: Path, quality: int = 92) -> None:
             img = img.convert("RGB")
         dest.parent.mkdir(parents=True, exist_ok=True)
         img.save(dest, format="JPEG", quality=quality, optimize=True)
+
+
+def thumbnail_path(src: Path, cache_dir: Path | None = None) -> Path:
+    """원본 이름과 충돌하지 않는 JPEG 썸네일 캐시 경로를 반환한다."""
+    return (cache_dir or src.parent / ".thumbnails") / f"{src.name}.jpg"
+
+
+def create_thumbnail(src: Path, cache_dir: Path | None = None) -> Path:
+    """작은 미리보기용 JPEG를 원본 비율로 생성하고 캐시한다."""
+    dest = thumbnail_path(src, cache_dir)
+    if dest.is_file():
+        return dest
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    temporary = dest.with_name(f".{dest.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with Image.open(src) as opened:
+            img = ImageOps.exif_transpose(opened)
+            img.thumbnail(THUMBNAIL_SIZE, Image.Resampling.LANCZOS)
+            if "A" in img.getbands():
+                rgba = img.convert("RGBA")
+                background = Image.new("RGB", rgba.size, "white")
+                background.paste(rgba, mask=rgba.getchannel("A"))
+                img = background
+            elif img.mode != "RGB":
+                img = img.convert("RGB")
+            img.save(
+                temporary,
+                format="JPEG",
+                quality=THUMBNAIL_QUALITY,
+                optimize=True,
+            )
+        temporary.replace(dest)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return dest
+
+
+def ensure_job_thumbnails(job_id: str) -> None:
+    """업로드 응답 전에 해당 작업의 모든 썸네일을 준비한다."""
+    job = get_job(job_id)
+    if not job:
+        return
+    cache_dir = _jobs_dir(job_id) / ".thumbnails"
+    for image_path in image_paths_of(job):
+        try:
+            create_thumbnail(Path(image_path), cache_dir)
+        except OSError:
+            # 확장자는 이미지지만 손상된 파일은 기존 파이프라인에서 오류로 처리한다.
+            continue
 
 
 def _slug(text: str, max_len: int = 60) -> str:
@@ -103,6 +161,8 @@ def _update_job(job_id: str, **fields) -> None:
 def get_job(job_id: str) -> dict | None:
     """메모리에 없으면 디스크에서 복구 (서버 재시작 대비)."""
     with _jobs_lock:
+        if job_id in _deleted_jobs:
+            return None
         if job_id in _jobs:
             job = dict(_jobs[job_id])
         else:
@@ -166,6 +226,7 @@ def create_job(filename_map: list[dict]) -> dict:
     }
     _jobs_dir(job_id).mkdir(parents=True, exist_ok=True)
     with _jobs_lock:
+        _deleted_jobs.discard(job_id)
         _jobs[job_id] = job
     _update_job(job_id)
     return job
@@ -261,27 +322,35 @@ def _claim_dir_name(g: dict, seq: int) -> str:
 
 
 def materialize_claim(job_id: str, g: dict, seq: int) -> tuple[Path, list[str]]:
-    """청구 디렉터리를 만들고 속한 사진들을 JPEG로 변환하여 저장한다. (원본 uploads는 보존)"""
-    dir_name = _claim_dir_name(g, seq)
-    claim_dir = config.CLAIMS_DIR / dir_name
-    claim_dir.mkdir(parents=True, exist_ok=True)
-    moved = []
-    used_names: set[str] = set()
-    for no in g["image_nos"]:
-        f = job_file(job_id, no)
-        if not f or not f.exists():
-            continue
-        stem = f.stem
-        candidate = f"{stem}.jpg"
-        idx = 2
-        while candidate in used_names or (claim_dir / candidate).exists():
-            candidate = f"{stem}_{idx}.jpg"
-            idx += 1
-        used_names.add(candidate)
-        dest = claim_dir / candidate
-        convert_to_jpeg(f, dest)
-        moved.append(str(dest))
-    return claim_dir, moved
+    """청구 디렉터리에 업로드 원본을 가리키는 상대 심볼릭 링크를 만든다."""
+    with _jobs_lock:
+        if job_id in _deleted_jobs or job_id not in _jobs:
+            raise JobDeleted(job_id)
+
+        dir_name = _claim_dir_name(g, seq)
+        claim_dir = config.CLAIMS_DIR / dir_name
+        claim_dir.mkdir(parents=True, exist_ok=True)
+        linked = []
+        used_names: set[str] = set()
+        try:
+            for no in g["image_nos"]:
+                f = job_file(job_id, no)
+                if not f or not f.exists():
+                    continue
+                candidate = f.name
+                idx = 2
+                while candidate in used_names or (claim_dir / candidate).exists():
+                    candidate = f"{f.stem}_{idx}{f.suffix}"
+                    idx += 1
+                used_names.add(candidate)
+                dest = claim_dir / candidate
+                dest.symlink_to(Path(os.path.relpath(f.resolve(), claim_dir.resolve())))
+                linked.append(str(dest))
+        except Exception:
+            shutil.rmtree(claim_dir, ignore_errors=True)
+            _taken_names.discard(dir_name)
+            raise
+    return claim_dir, linked
 
 
 def job_file(job_id: str, image_no: int) -> Path | None:
@@ -386,6 +455,73 @@ def write_summary(claim_dir: Path, ex: dict, images: list[str], job_id: str) -> 
 
 # ---------------------------------------------------------------- 파이프라인
 
+
+def _summary_job_id(claim_dir: Path) -> str | None:
+    summary = claim_dir / "summary.yaml"
+    if not summary.is_file():
+        return None
+    try:
+        data = yaml.safe_load(summary.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return None
+    meta = data.get("_meta") if isinstance(data, dict) else None
+    return str(meta.get("job_id")) if isinstance(meta, dict) and meta.get("job_id") else None
+
+
+def _claim_links_to_job(claim_dir: Path, job_dir: Path) -> bool:
+    for entry in claim_dir.iterdir():
+        if not entry.is_symlink():
+            continue
+        try:
+            entry.resolve(strict=False).relative_to(job_dir.resolve())
+            return True
+        except (OSError, ValueError):
+            continue
+    return False
+
+
+def delete_job(job_id: str) -> dict | None:
+    """작업 원본과 썸네일, 이 작업에서 파생된 청구 디렉터리를 모두 삭제한다."""
+    job_dir = _jobs_dir(job_id)
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if job is None:
+            job_file_path = job_dir / "job.json"
+            if not job_file_path.is_file():
+                return None
+            try:
+                job = json.loads(job_file_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return None
+        job = dict(job)
+        _deleted_jobs.add(job_id)
+        _jobs.pop(job_id, None)
+
+    known_claims = {
+        str(claim.get("dir"))
+        for claim in job.get("claims", [])
+        if claim.get("dir")
+    }
+    claim_dirs: list[Path] = []
+    if config.CLAIMS_DIR.is_dir():
+        for claim_dir in config.CLAIMS_DIR.iterdir():
+            if not claim_dir.is_dir():
+                continue
+            if (
+                claim_dir.name in known_claims
+                or _summary_job_id(claim_dir) == job_id
+                or _claim_links_to_job(claim_dir, job_dir)
+            ):
+                claim_dirs.append(claim_dir)
+
+    for claim_dir in claim_dirs:
+        shutil.rmtree(claim_dir)
+    shutil.rmtree(job_dir, ignore_errors=True)
+
+    with _jobs_lock:
+        _taken_names.difference_update(claim_dir.name for claim_dir in claim_dirs)
+    return {"job_id": job_id, "deleted_claims": len(claim_dirs)}
+
 async def run_job(job_id: str) -> None:
     job = get_job(job_id)
     if not job:
@@ -414,6 +550,8 @@ async def run_job(job_id: str) -> None:
             })
 
         _update_job(job_id, status="done", progress="완료", claims=claims_meta)
+    except JobDeleted:
+        return
     except Exception as e:  # noqa: BLE001
         _update_job(job_id, status="failed", error=f"{type(e).__name__}: {e}")
 

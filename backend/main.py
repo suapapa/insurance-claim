@@ -4,11 +4,11 @@
 """
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import mimetypes
 import re
 import tempfile
-import uuid
 import zipfile
 from pathlib import Path
 
@@ -52,6 +52,7 @@ async def create_job(files: list[UploadFile] = File(...)):
         return JSONResponse({"error": "이미지 파일이 없습니다."}, status_code=400)
 
     pipeline._update_job(job["id"], files=filename_map)
+    await asyncio.to_thread(pipeline.ensure_job_thumbnails, job["id"])
     pipeline.schedule_job(job["id"])
     return {"job_id": job["id"]}
 
@@ -71,15 +72,35 @@ async def get_job(job_id: str):
     return job
 
 
+@app.delete("/api/jobs/{job_id}")
+async def delete_job(job_id: str):
+    """작업 원본, 썸네일, 파생된 청구 디렉터리를 한 번에 삭제."""
+    if not SAFE_ID.match(job_id):
+        raise HTTPException(400, "잘못된 작업 ID입니다.")
+    result = await asyncio.to_thread(pipeline.delete_job, job_id)
+    if result is None:
+        raise HTTPException(404, "작업을 찾을 수 없습니다.")
+    return result
+
+
 @app.get("/api/images/{job_id}/{filename}")
-async def get_image(job_id: str, filename: str):
+async def get_image(job_id: str, filename: str, thumbnail: bool = False):
     """원본 사진 미리보기 (경로 traversal 차단). HEIC는 JPEG로 자동 변환."""
     if not SAFE_ID.match(job_id):
         raise HTTPException(400, "잘못된 작업 ID입니다.")
     base_dir = pipeline._jobs_dir(job_id).resolve()
-    p = (base_dir / Path(filename).name).resolve()
-    if not str(p).startswith(str(base_dir)) or not p.is_file():
+    if Path(filename).name != filename:
+        raise HTTPException(400, "잘못된 파일명입니다.")
+    p = base_dir / filename
+    if not p.is_file() or not p.resolve().is_relative_to(base_dir):
         raise HTTPException(404)
+    if thumbnail:
+        thumb = await asyncio.to_thread(pipeline.create_thumbnail, p)
+        return FileResponse(
+            thumb,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
     if p.suffix.lower() in (".heic", ".heif"):
         cached_jpeg = base_dir / f"{p.stem}.preview.jpg"
         if not cached_jpeg.exists():
@@ -100,14 +121,32 @@ def _claim_directory(claim_dir: str) -> Path:
     return target_dir
 
 
+def _claim_file_path(target_dir: Path, filename: str) -> Path:
+    """청구 폴더의 직접 자식과 uploads를 향한 이미지 링크만 허용한다."""
+    if Path(filename).name != filename:
+        raise HTTPException(400, "잘못된 파일명입니다.")
+    path = target_dir / filename
+    if not path.is_file():
+        raise HTTPException(404, "파일을 찾을 수 없습니다.")
+    resolved = path.resolve()
+    if not (
+        resolved.is_relative_to(target_dir)
+        or resolved.is_relative_to(config.UPLOADS_DIR.resolve())
+    ):
+        raise HTTPException(404, "파일을 찾을 수 없습니다.")
+    return path
+
+
 @app.get("/api/claims/{claim_dir}/download")
 async def download_claim_archive(claim_dir: str):
-    """청구 건의 JPEG 이미지와 summary.yaml을 하나의 ZIP으로 다운로드."""
+    """청구 건의 원본 이미지와 summary.yaml을 하나의 ZIP으로 다운로드."""
     target_dir = _claim_directory(claim_dir)
     summary = target_dir / "summary.yaml"
     images = sorted(
         p for p in target_dir.iterdir()
-        if p.is_file() and p.suffix.lower() in pipeline.IMAGE_EXTS
+        if p.is_file()
+        and p.suffix.lower() in pipeline.IMAGE_EXTS
+        and _claim_file_path(target_dir, p.name)
     )
     if not summary.is_file():
         raise HTTPException(409, "청구 정보가 아직 준비되지 않았습니다.")
@@ -119,7 +158,8 @@ async def download_claim_archive(claim_dir: str):
         with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
             folder = Path(claim_dir)
             for image in images:
-                archive.write(image, arcname=str(folder / image.name))
+                # resolve한 대상을 써서 ZIP 안에는 링크가 아닌 일반 파일을 넣는다.
+                archive.write(image.resolve(), arcname=str(folder / image.name))
             archive.write(summary, arcname=str(folder / summary.name))
     except Exception:
         archive_path.unlink(missing_ok=True)
@@ -134,12 +174,26 @@ async def download_claim_archive(claim_dir: str):
 
 
 @app.get("/api/claims/{claim_dir}/{filename}")
-async def get_claim_file(claim_dir: str, filename: str):
-    """청구 디렉터리 내 JPEG 이미지, summary.yaml 등을 안전하게 서빙."""
+async def get_claim_file(claim_dir: str, filename: str, thumbnail: bool = False):
+    """청구 디렉터리 내 이미지, summary.yaml 등을 안전하게 서빙."""
     target_dir = _claim_directory(claim_dir)
-    p = (target_dir / Path(filename).name).resolve()
-    if not str(p).startswith(str(target_dir)) or not p.is_file():
-        raise HTTPException(404, "파일을 찾을 수 없습니다.")
+    p = _claim_file_path(target_dir, filename)
+    if thumbnail:
+        if p.suffix.lower() not in pipeline.IMAGE_EXTS:
+            raise HTTPException(400, "이미지 파일만 썸네일을 만들 수 있습니다.")
+        source = p.resolve()
+        thumb = await asyncio.to_thread(pipeline.create_thumbnail, source)
+        return FileResponse(
+            thumb,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
+    if p.suffix.lower() in (".heic", ".heif"):
+        source = p.resolve()
+        preview = source.parent / ".previews" / f"{source.name}.jpg"
+        if not preview.is_file():
+            await asyncio.to_thread(pipeline.convert_to_jpeg, source, preview)
+        return FileResponse(preview, media_type="image/jpeg")
     mt = mimetypes.guess_type(str(p))[0] or "application/octet-stream"
     return FileResponse(p, media_type=mt)
 
