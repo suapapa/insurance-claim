@@ -71,7 +71,7 @@ class TestAPI(unittest.TestCase):
             resp = self.client.get("/api/claims/not_exist_dir/test.jpg")
             self.assertEqual(resp.status_code, 404)
 
-            # 5. ZIP에는 링크가 아닌 원본 이미지 바이트와 청구 정보가 포함
+            # 5. ZIP에는 링크가 아닌 JPEG 이미지와 청구 정보가 포함
             resp = self.client.get("/api/claims/test_claim_dir/download")
             self.assertEqual(resp.status_code, 200)
             self.assertEqual(resp.headers.get("content-type"), "application/zip")
@@ -84,6 +84,19 @@ class TestAPI(unittest.TestCase):
                 archived_mode = archive.getinfo("test_claim_dir/test.jpg").external_attr >> 16
                 self.assertFalse(stat.S_ISLNK(archived_mode))
                 self.assertIn("청구사유: 질병", archive.read("test_claim_dir/summary.yaml").decode())
+
+            # 6. JPEG가 아닌 이미지도 ZIP에는 .jpg로 변환되어 포함
+            img.save(claim_dir / "legacy.webp", "WEBP")
+            resp = self.client.get("/api/claims/test_claim_dir/download")
+            self.assertEqual(resp.status_code, 200)
+            with zipfile.ZipFile(io.BytesIO(resp.content)) as archive:
+                names = archive.namelist()
+                self.assertIn("test_claim_dir/test.jpg", names)
+                self.assertIn("test_claim_dir/legacy.jpg", names)
+                self.assertIn("test_claim_dir/summary.yaml", names)
+                self.assertNotIn("test_claim_dir/legacy.webp", names)
+                with Image.open(io.BytesIO(archive.read("test_claim_dir/legacy.jpg"))) as zipped:
+                    self.assertEqual(zipped.format, "JPEG")
         finally:
             shutil.rmtree(claim_dir, ignore_errors=True)
             shutil.rmtree(upload_dir, ignore_errors=True)

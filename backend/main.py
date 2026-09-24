@@ -8,6 +8,7 @@ import asyncio
 import datetime as dt
 import mimetypes
 import re
+import shutil
 import tempfile
 import zipfile
 from pathlib import Path
@@ -23,6 +24,7 @@ app = FastAPI(title="insurance-claim")
 
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+JPEG_EXTS = {".jpg", ".jpeg"}
 
 
 @app.post("/api/jobs")
@@ -139,7 +141,10 @@ def _claim_file_path(target_dir: Path, filename: str) -> Path:
 
 @app.get("/api/claims/{claim_dir}/download")
 async def download_claim_archive(claim_dir: str):
-    """청구 건의 원본 이미지와 summary.yaml을 하나의 ZIP으로 다운로드."""
+    """청구 건의 JPEG 이미지와 summary.yaml을 하나의 ZIP으로 다운로드.
+
+    청구 폴더에 JPEG가 아닌 이미지가 남아 있어도 ZIP에는 JPEG로 변환해 넣는다.
+    """
     target_dir = _claim_directory(claim_dir)
     summary = target_dir / "summary.yaml"
     images = sorted(
@@ -154,16 +159,26 @@ async def download_claim_archive(claim_dir: str):
     temp = tempfile.NamedTemporaryFile(prefix="insurance-claim-", suffix=".zip", delete=False)
     archive_path = Path(temp.name)
     temp.close()
+    convert_scratch = Path(tempfile.mkdtemp(prefix="insurance-claim-jpeg-"))
     try:
         with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
             folder = Path(claim_dir)
             for image in images:
                 # resolve한 대상을 써서 ZIP 안에는 링크가 아닌 일반 파일을 넣는다.
-                archive.write(image.resolve(), arcname=str(folder / image.name))
+                source = image.resolve()
+                if image.suffix.lower() in JPEG_EXTS:
+                    archive.write(source, arcname=str(folder / image.name))
+                    continue
+                jpeg_name = f"{image.stem}.jpg"
+                jpeg_path = convert_scratch / f"{image.name}.jpg"
+                await asyncio.to_thread(pipeline.convert_to_jpeg, source, jpeg_path)
+                archive.write(jpeg_path, arcname=str(folder / jpeg_name))
             archive.write(summary, arcname=str(folder / summary.name))
     except Exception:
         archive_path.unlink(missing_ok=True)
         raise
+    finally:
+        shutil.rmtree(convert_scratch, ignore_errors=True)
 
     return FileResponse(
         archive_path,
