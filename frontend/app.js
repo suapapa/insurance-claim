@@ -481,14 +481,14 @@ async function refresh() {
       if (!jobIds.has(card.dataset.job)) card.remove();
     });
 
-    // 이미 렌더된 카드 갱신, 없으면 추가
+    // 이미 렌더된 카드 갱신, 없으면 추가. API 순서(최신순)에 맞게 DOM도 재배치
     for (const job of jobs) {
       let card = Array.from(jobsEl.children).find(item => item.dataset.job === String(job.id));
       if (!card) {
         card = tpl.content.cloneNode(true).querySelector('article');
         card.dataset.job = String(job.id);
-        jobsEl.prepend(card);
       }
+      jobsEl.appendChild(card);
       renderJob(card, job);
     }
 
